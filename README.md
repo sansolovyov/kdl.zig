@@ -17,9 +17,11 @@ A [KDL Document Language](https://kdl.dev) v2 parser written in Zig.
 
 ## Status
 
-**Production Ready** - Passes all 336 official KDL v2 test cases.
+**Production Ready** - Passes all 338 official KDL v2 test cases.
 
 ## Installation
+
+Requires Zig 0.16.0 or newer.
 
 Add as a Zig dependency in your `build.zig.zon`:
 
@@ -83,7 +85,9 @@ var decoded = try kdl.decodeInto(Config, allocator,
 );
 defer decoded.deinit();
 
-try kdl.encodeFrom(writer, decoded.value);
+var output: std.Io.Writer.Allocating = .init(allocator);
+defer output.deinit();
+try kdl.encodeFrom(&output.writer, decoded.value);
 ```
 
 Use `decodeIntoOptions` / `encodeFromOptions` to provide custom scalar parsing,
@@ -277,10 +281,10 @@ var doc = try kdl.parse(allocator, source);
 defer doc.deinit();
 
 // Format document back to KDL
-var output = std.ArrayList(u8).init(allocator);
+var output: std.Io.Writer.Allocating = .init(allocator);
 defer output.deinit();
-try std.fmt.format(output.writer(), "{}", .{doc});
-std.debug.print("{s}\n", .{output.items});
+try output.writer.print("{f}", .{doc});
+std.debug.print("{s}\n", .{output.written()});
 ```
 
 ## API Reference
@@ -306,7 +310,7 @@ pub fn parse(allocator: Allocator, source: []const u8) ParseError!Document
 ```zig
 pub fn deinit(self: *Document) void
 pub fn getNode(self: Document, name: []const u8) ?*const Node
-pub fn format(self: Document, writer: anytype) !void
+pub fn format(self: Document, writer: *std.Io.Writer) std.Io.Writer.Error!void
 ```
 
 ### Node Methods
@@ -337,7 +341,7 @@ Allocator choice significantly impacts performance:
 
 | Allocator | Time per parse | Notes |
 |-----------|---------------|-------|
-| `std.heap.GeneralPurposeAllocator` | ~7.8 µs | Safe, good for debugging |
+| General-purpose allocator (now `std.heap.DebugAllocator`) | ~7.8 µs | Safe, good for debugging |
 | `std.heap.page_allocator` | ~3.1 µs | Simple, no cleanup needed |
 | `std.heap.c_allocator` | ~0.7 µs | Fastest, requires libc |
 
@@ -347,11 +351,21 @@ For performance-critical applications, use `c_allocator` or a custom arena/pool 
 
 ## Building
 
+The Zig version is pinned in `mise.toml`. With [mise](https://mise.jdx.dev):
+
+```bash
+mise trust
+mise install
+mise exec -- make test
+```
+
+Or with Zig 0.16.0 on your PATH:
+
 ```bash
 # Run unit tests
 zig build test
 
-# Run official KDL v2 test suite (336 tests)
+# Run official KDL v2 test suite (338 tests)
 zig build test-suite
 ```
 

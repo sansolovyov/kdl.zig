@@ -435,6 +435,32 @@ test "identifier string as prop value" {
     try testing.expectEqualStrings("val", doc.nodes[0].getProp("prop").?.value.asString().?);
 }
 
+test "format document with std.Io.Writer" {
+    var doc = try parse(testing.allocator,
+        \\(config)parent "hello world" enabled=#true {
+        \\    child (u8)7
+        \\}
+    );
+    defer doc.deinit();
+
+    var buffer: [256]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&buffer);
+    try writer.print("{f}", .{doc});
+    try testing.expectEqualStrings(
+        "(config)parent \"hello world\" enabled=#true {\n    child (u8)7\n}\n",
+        writer.buffered(),
+    );
+}
+
+test "format and encode propagate writer failures" {
+    var doc = try parse(testing.allocator, "node 42");
+    defer doc.deinit();
+
+    var writer: std.Io.Writer = .failing;
+    try testing.expectError(error.WriteFailed, writer.print("{f}", .{doc}));
+    try testing.expectError(error.WriteFailed, kdl.encodeFrom(&writer, .{ .count = @as(u8, 42) }));
+}
+
 test "decode into nested structs rejects unknown fields" {
     const Child = struct {
         name: ?[]const u8 = null,
@@ -510,11 +536,11 @@ test "encode from struct roundtrips through decode" {
     };
     const cfg = Config{ .section = .{ .axis_name = "r", .invert = true, .deadzone = 12 } };
 
-    var list: std.ArrayList(u8) = .empty;
-    defer list.deinit(testing.allocator);
-    try kdl.encodeFrom(list.writer(testing.allocator), cfg);
+    var output: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer output.deinit();
+    try kdl.encodeFrom(&output.writer, cfg);
 
-    var parsed = try kdl.decodeInto(Config, testing.allocator, list.items);
+    var parsed = try kdl.decodeInto(Config, testing.allocator, output.written());
     defer parsed.deinit();
     try testing.expectEqualStrings("r", parsed.value.section.?.axis_name);
     try testing.expect(parsed.value.section.?.invert);
@@ -538,10 +564,10 @@ test "encode honors custom scalar structs" {
     };
     const Config = struct { port: Port = .{ .value = 123 } };
 
-    var list: std.ArrayList(u8) = .empty;
-    defer list.deinit(testing.allocator);
-    try kdl.encodeFromOptions(list.writer(testing.allocator), Config{}, Options);
-    try testing.expectEqualStrings("port 123\n", list.items);
+    var output: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer output.deinit();
+    try kdl.encodeFromOptions(&output.writer, Config{}, Options);
+    try testing.expectEqualStrings("port 123\n", output.written());
 }
 
 test "encode supports Value and TypedValue scalar fields" {
@@ -550,8 +576,8 @@ test "encode supports Value and TypedValue scalar fields" {
         typed: kdl.TypedValue = .{ .type_annotation = "u8", .value = .{ .integer = 7 } },
     };
 
-    var list: std.ArrayList(u8) = .empty;
-    defer list.deinit(testing.allocator);
-    try kdl.encodeFrom(list.writer(testing.allocator), Config{});
-    try testing.expectEqualStrings("raw 42\ntyped (u8)7\n", list.items);
+    var output: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer output.deinit();
+    try kdl.encodeFrom(&output.writer, Config{});
+    try testing.expectEqualStrings("raw 42\ntyped (u8)7\n", output.written());
 }

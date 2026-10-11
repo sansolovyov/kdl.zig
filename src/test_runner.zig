@@ -1,13 +1,10 @@
 const std = @import("std");
 const kdl = @import("kdl.zig");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     const test_dir = if (args.len > 1) args[1] else "tests/test_cases";
 
@@ -20,20 +17,20 @@ pub fn main() !void {
     const expected_path = try std.fs.path.join(allocator, &.{ test_dir, "expected_kdl" });
     defer allocator.free(expected_path);
 
-    var input_dir = try std.fs.cwd().openDir(input_path, .{ .iterate = true });
-    defer input_dir.close();
-    var expected_dir = try std.fs.cwd().openDir(expected_path, .{});
-    defer expected_dir.close();
+    var input_dir = try std.Io.Dir.cwd().openDir(io, input_path, .{ .iterate = true });
+    defer input_dir.close(io);
+    var expected_dir = try std.Io.Dir.cwd().openDir(io, expected_path, .{});
+    defer expected_dir.close(io);
 
     var dir_iter = input_dir.iterate();
-    while (try dir_iter.next()) |entry| {
+    while (try dir_iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".kdl")) continue;
 
         const is_fail_test = std.mem.indexOf(u8, entry.name, "_fail") != null;
 
         // Read input file
-        const input_content = input_dir.readFileAlloc(allocator, entry.name, 1024 * 1024) catch |err| {
+        const input_content = input_dir.readFileAlloc(io, entry.name, allocator, .limited(1024 * 1024)) catch |err| {
             std.debug.print("SKIP {s}: cannot read input: {}\n", .{ entry.name, err });
             skipped += 1;
             continue;
@@ -60,7 +57,7 @@ pub fn main() !void {
         }
 
         // Read expected output (if exists)
-        const expected_raw = expected_dir.readFileAlloc(allocator, entry.name, 1024 * 1024) catch {
+        const expected_raw = expected_dir.readFileAlloc(io, entry.name, allocator, .limited(1024 * 1024)) catch {
             // No expected file - just check it parses
             passed += 1;
             continue;
@@ -73,17 +70,16 @@ pub fn main() !void {
         defer allocator.free(expected_content);
 
         // Format our output
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(allocator);
-        const writer = output.writer(allocator);
-        std.fmt.format(writer, "{f}", .{doc}) catch |err| {
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        defer output.deinit();
+        output.writer.print("{f}", .{doc}) catch |err| {
             std.debug.print("FAIL {s}: format error: {any}\n", .{ entry.name, err });
             failed += 1;
             continue;
         };
 
         // Compare (normalized)
-        const our_output = std.mem.trim(u8, output.items, "\n\r ");
+        const our_output = std.mem.trim(u8, output.written(), "\n\r ");
         const expected_trimmed = std.mem.trim(u8, expected_content, "\n\r ");
 
         if (std.mem.eql(u8, our_output, expected_trimmed)) {

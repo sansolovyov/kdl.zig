@@ -56,7 +56,7 @@ pub const Value = union(enum) {
         return self == .null;
     }
 
-    pub fn format(self: Value, writer: anytype) !void {
+    pub fn format(self: Value, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self) {
             .string => |s| try writeEscapedString(writer, s),
             .integer => |i| try writer.print("{d}", .{i}),
@@ -245,7 +245,7 @@ pub const TypedValue = struct {
     type_annotation: ?[]const u8 = null,
     value: Value,
 
-    pub fn format(self: TypedValue, writer: anytype) !void {
+    pub fn format(self: TypedValue, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.type_annotation) |t| {
             try writer.writeByte('(');
             try writeEscapedString(writer, t);
@@ -300,11 +300,11 @@ pub const Node = struct {
         return buf[0..count];
     }
 
-    pub fn format(self: Node, writer: anytype) !void {
+    pub fn format(self: Node, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try self.formatIndent(writer, 0);
     }
 
-    fn formatIndent(self: Node, writer: anytype, indent: usize) !void {
+    fn formatIndent(self: Node, writer: *std.Io.Writer, indent: usize) std.Io.Writer.Error!void {
         for (0..indent) |_| try writer.writeAll("    ");
 
         if (self.type_annotation) |t| {
@@ -367,7 +367,7 @@ pub const Document = struct {
         return null;
     }
 
-    pub fn format(self: Document, writer: anytype) !void {
+    pub fn format(self: Document, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         for (self.nodes) |node| {
             try writer.print("{f}", .{node});
         }
