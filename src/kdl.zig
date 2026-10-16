@@ -468,10 +468,11 @@ pub fn decodeNodesInto(comptime T: type, out: *T, nodes: []const Node) !void {
 pub fn decodeNodesIntoOptions(comptime T: type, out: *T, nodes: []const Node, comptime Options: type) !void {
     for (nodes) |*node| {
         var handled = false;
-        inline for (@typeInfo(T).@"struct".fields) |field| {
-            if (comptime isDecodableField(field.type)) {
-                if (!handled and fieldNameMatches(field.name, node.name, Options)) {
-                    try decodeField(field.type, &@field(out.*, field.name), node, Options);
+        const info = @typeInfo(T).@"struct";
+        inline for (info.field_names, info.field_types) |field_name, field_type| {
+            if (comptime isDecodableField(field_type)) {
+                if (!handled and fieldNameMatches(field_name, node.name, Options)) {
+                    try decodeField(field_type, &@field(out.*, field_name), node, Options);
                     handled = true;
                 }
             }
@@ -557,10 +558,10 @@ fn decodeDefaultScalar(comptime T: type, node: *const Node, comptime Options: ty
                 else => error.WrongValueType,
             };
         },
-        .@"enum" => {
+        .@"enum" => |info| {
             const value = try nodeString(node);
-            inline for (@typeInfo(T).@"enum".fields) |field| {
-                if (fieldNameMatches(field.name, value, Options)) return @enumFromInt(field.value);
+            inline for (info.field_names, info.field_values) |field_name, field_value| {
+                if (fieldNameMatches(field_name, value, Options)) return @fromBackingInt(@intCast(field_value));
             }
             return error.InvalidField;
         },
@@ -606,12 +607,13 @@ pub fn encodeFromOptions(writer: anytype, value: anytype, comptime Options: type
 }
 
 fn encodeStructFields(writer: anytype, value: anytype, comptime Options: type, comptime depth: usize) !void {
-    inline for (@typeInfo(@TypeOf(value)).@"struct".fields) |field| {
-        const field_value = @field(value, field.name);
-        if (comptime @typeInfo(field.type) == .optional) {
-            if (field_value) |v| try encodeField(writer, field.name, v, Options, depth);
+    const info = @typeInfo(@TypeOf(value)).@"struct";
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        const field_value = @field(value, field_name);
+        if (comptime @typeInfo(field_type) == .optional) {
+            if (field_value) |v| try encodeField(writer, field_name, v, Options, depth);
         } else {
-            try encodeField(writer, field.name, field_value, Options, depth);
+            try encodeField(writer, field_name, field_value, Options, depth);
         }
     }
 }

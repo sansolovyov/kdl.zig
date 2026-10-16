@@ -21,7 +21,7 @@ A [KDL Document Language](https://kdl.dev) v2 parser written in Zig.
 
 ## Installation
 
-Requires Zig 0.16.0 or newer.
+Requires Zig 0.17.0 or newer.
 
 Add as a Zig dependency in your `build.zig.zon`:
 
@@ -359,7 +359,7 @@ mise install
 mise exec -- make test
 ```
 
-Or with Zig 0.16.0 on your PATH:
+Or with Zig 0.17.0 on your PATH:
 
 ```bash
 # Run unit tests

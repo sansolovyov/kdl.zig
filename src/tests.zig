@@ -547,6 +547,31 @@ test "encode from struct roundtrips through decode" {
     try testing.expectEqual(@as(u8, 12), parsed.value.section.?.deadzone);
 }
 
+test "enum fields roundtrip with explicit values and omitted optionals" {
+    const Mode = enum(u8) { low_power = 3, high_performance = 42 };
+    const Config = struct {
+        mode: Mode = .low_power,
+        fallback_mode: ?Mode = null,
+    };
+
+    var decoded = try kdl.decodeInto(Config, testing.allocator, "mode high-performance\n");
+    defer decoded.deinit();
+    try testing.expectEqual(Mode.high_performance, decoded.value.mode);
+    try testing.expectEqual(null, decoded.value.fallback_mode);
+
+    var output: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer output.deinit();
+    try kdl.encodeFrom(&output.writer, decoded.value);
+    try testing.expectEqualStrings("mode high-performance\n", output.written());
+
+    var with_optional = try kdl.decodeInto(Config, testing.allocator, "fallback-mode low-power\n");
+    defer with_optional.deinit();
+    try testing.expectEqual(Mode.low_power, with_optional.value.mode);
+    try testing.expectEqual(Mode.low_power, with_optional.value.fallback_mode.?);
+
+    try testing.expectError(error.InvalidField, kdl.decodeInto(Config, testing.allocator, "mode unknown\n"));
+}
+
 test "encode honors custom scalar structs" {
     const Port = struct { value: u16 };
     const Options = struct {
